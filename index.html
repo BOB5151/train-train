@@ -5,41 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>部活ログ：スマホ完結版</title>
     <style>
-        /* 全体：余白をゼロにして画面を広く使う */
+        /* 全体：余白を最適化 */
         * { box-sizing: border-box; }
-        body { font-family: sans-serif; margin: 5px; color: #333; background-color: #f0f2f5; font-size: 13px; width: calc(100% - 10px); }
+        body { font-family: sans-serif; margin: 8px; color: #333; background-color: #f0f2f5; font-size: 13px; }
         
-        .card { background: white; padding: 10px; border-radius: 10px; box-shadow: 0 1px 5px rgba(0,0,0,0.1); margin-bottom: 10px; width: 100%; }
+        .card { background: white; padding: 12px; border-radius: 10px; box-shadow: 0 1px 5px rgba(0,0,0,0.1); margin-bottom: 10px; width: 100%; overflow: hidden; }
         h2 { font-size: 1rem; margin-top: 0; color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 3px; }
         
+        /* 目標エリアの調整 */
+        .goal-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; width: 100%; }
+        .goal-item { width: 100%; }
+        .goal-item label { display: block; font-size: 10px; margin-bottom: 2px; color: #666; }
+        .goal-item input { width: 100% !important; padding: 6px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+
         /* 入力エリア */
         .input-row { display: flex; gap: 5px; margin-bottom: 8px; width: 100%; }
         input, select { padding: 10px; border: 1px solid #ccc; border-radius: 6px; flex: 1; min-width: 0; font-size: 16px; }
         
-        .btn { padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; }
-        .btn-add { background: #1a73e8; color: white; width: 100%; }
-        .btn-share { background: #f39c12; color: white; width: 100%; margin-top: 10px; }
-        .btn-view { background: #8e44ad; color: white; width: 100%; margin-bottom: 10px; }
+        .btn { padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; width: 100%; }
+        .btn-add { background: #1a73e8; color: white; }
+        .btn-share { background: #f39c12; color: white; margin-top: 10px; }
+        .btn-view { background: #8e44ad; color: white; margin-bottom: 10px; }
+        .btn-goal { background: #34a853; color: white; padding: 10px; }
 
-        /* テーブル：画面に強制的に収める設定 */
+        /* テーブル：強制フィット */
         .table-wrapper { width: 100%; overflow-x: hidden; margin-top: 5px; }
-        table { 
-            width: 100% !important; 
-            table-layout: fixed; /* これが強制フィットの魔法です */
-            border-collapse: collapse; 
-            font-size: 10px; /* 文字を小さく */
-        }
-        th, td { 
-            border: 1px solid #ddd; 
-            padding: 4px 1px; 
-            text-align: center; 
-            word-break: break-all; /* 長い名前も途中で折る */
-        }
+        table { width: 100% !important; table-layout: fixed; border-collapse: collapse; font-size: 10px; }
+        th, td { border: 1px solid #ddd; padding: 6px 1px; text-align: center; word-break: break-all; }
         th { background: #5f6368; color: white; }
         .date-cell { width: 25px; font-weight: bold; background: #eee; }
         .total-row { background: #fff9c4; font-weight: bold; }
 
-        /* 履歴 */
         .history-list { max-height: 120px; overflow-y: auto; font-size: 0.8rem; background: #fafafa; border-radius: 8px; }
         .history-item { display: flex; justify-content: space-between; padding: 10px 5px; border-bottom: 1px solid #eee; }
     </style>
@@ -56,8 +52,8 @@
     </div>
 
     <div class="card">
-        <div id="goalInputs" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 5px;"></div>
-        <button class="btn" style="background:#34a853; color:white; width:100%; padding:8px;" onclick="saveGoals()">目標保存</button>
+        <div id="goalInputs" class="goal-grid"></div>
+        <button class="btn btn-goal" onclick="saveGoals()">目標保存</button>
     </div>
 
     <div class="card">
@@ -127,18 +123,24 @@
     };
 
     function saveUserName() { localStorage.setItem('club_userName', document.getElementById('userName').value); }
+    
+    // 目標入力欄の生成ロジックを微調整
     function initGoalInputs() {
         document.getElementById('goalInputs').innerHTML = COLUMNS.map(col => `
-            <div style="font-size:10px;"><label>${col.slice(0,2)}</label>
-            <input type="number" id="goalVal_${col}" style="padding:5px; font-size:12px;"></div>
+            <div class="goal-item">
+                <label>${col.slice(0,2)}</label>
+                <input type="number" id="goalVal_${col}" inputmode="numeric" placeholder="0">
+            </div>
         `).join('');
     }
+
     function saveGoals() {
         const goals = {};
         COLUMNS.forEach(col => goals[col] = parseInt(document.getElementById(`goalVal_${col}`).value) || 0);
         localStorage.setItem('club_goals_v3', JSON.stringify(goals));
-        alert("保存！"); refreshUI();
+        alert("目標を保存しました"); refreshUI();
     }
+    
     function loadGoals() {
         const goals = JSON.parse(localStorage.getItem('club_goals_v3')) || {};
         COLUMNS.forEach(col => { if (goals[col]) document.getElementById(`goalVal_${col}`).value = goals[col]; });
@@ -199,16 +201,16 @@
 
     async function sendToGAS() {
         const name = document.getElementById('userName').value;
-        if (!name) return alert("名前！");
+        if (!name) return alert("名前を入力してください");
         try {
             await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ name, month: document.getElementById('viewMonth').value, totals: currentMonthlyTotals, grandTotal: currentGrandTotal }) });
-            alert("共有OK");
-        } catch (e) { alert("失敗"); }
+            alert("共有完了！");
+        } catch (e) { alert("通信エラー"); }
     }
 
     async function fetchFromGAS() {
         const body = document.getElementById('shareBody');
-        body.innerHTML = "ロード中...";
+        body.innerHTML = "読込中...";
         try {
             const response = await fetch(GAS_URL);
             const data = await response.json();
@@ -216,18 +218,18 @@
             data.forEach(row => {
                 body.innerHTML += `<tr><td>${row[0]}</td><td>${row[2]}</td><td>${row[3]}</td><td>${row[4]}</td><td>${row[5]}</td><td>${row[6]}</td><td>${row[7]}</td><td>${row[8]}</td></tr>`;
             });
-        } catch (e) { alert("エラー"); }
+        } catch (e) { alert("読込エラー"); }
     }
 
     function displayHistory(records) {
         document.getElementById('historyList').innerHTML = records.slice().reverse().map((r, i) => `
-            <div class="history-item"><span>${r.date.slice(5)} ${r.ampm} ${r.activity}:${r.duration}</span>
-            <button onclick="deleteRecord(${records.length-1-i})" style="color:red; background:none; border:none;">消</button></div>
+            <div class="history-item"><span>${r.date.slice(5)} ${r.ampm} ${r.activity}:${r.duration}分</span>
+            <button onclick="deleteRecord(${records.length-1-i})" style="color:red; background:none; border:none;">消去</button></div>
         `).join('');
     }
 
     function deleteRecord(idx) {
-        if(!confirm("消す？")) return;
+        if(!confirm("削除しますか？")) return;
         const records = JSON.parse(localStorage.getItem('club_v3')) || [];
         records.splice(idx, 1);
         localStorage.setItem('club_v3', JSON.stringify(records));
