@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>部活ログ：スマホ完結版</title>
+    <style>
+        /* 全体：余白をゼロにして画面を広く使う */
+        * { box-sizing: border-box; }
+        body { font-family: sans-serif; margin: 5px; color: #333; background-color: #f0f2f5; font-size: 13px; width: calc(100% - 10px); }
+        
+        .card { background: white; padding: 10px; border-radius: 10px; box-shadow: 0 1px 5px rgba(0,0,0,0.1); margin-bottom: 10px; width: 100%; }
+        h2 { font-size: 1rem; margin-top: 0; color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 3px; }
+        
+        /* 入力エリア */
+        .input-row { display: flex; gap: 5px; margin-bottom: 8px; width: 100%; }
+        input, select { padding: 10px; border: 1px solid #ccc; border-radius: 6px; flex: 1; min-width: 0; font-size: 16px; }
+        
+        .btn { padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .btn-add { background: #1a73e8; color: white; width: 100%; }
+        .btn-share { background: #f39c12; color: white; width: 100%; margin-top: 10px; }
+        .btn-view { background: #8e44ad; color: white; width: 100%; margin-bottom: 10px; }
+
+        /* テーブル：画面に強制的に収める設定 */
+        .table-wrapper { width: 100%; overflow-x: hidden; margin-top: 5px; }
+        table { 
+            width: 100% !important; 
+            table-layout: fixed; /* これが強制フィットの魔法です */
+            border-collapse: collapse; 
+            font-size: 10px; /* 文字を小さく */
+        }
+        th, td { 
+            border: 1px solid #ddd; 
+            padding: 4px 1px; 
+            text-align: center; 
+            word-break: break-all; /* 長い名前も途中で折る */
+        }
+        th { background: #5f6368; color: white; }
+        .date-cell { width: 25px; font-weight: bold; background: #eee; }
+        .total-row { background: #fff9c4; font-weight: bold; }
+
+        /* 履歴 */
+        .history-list { max-height: 120px; overflow-y: auto; font-size: 0.8rem; background: #fafafa; border-radius: 8px; }
+        .history-item { display: flex; justify-content: space-between; padding: 10px 5px; border-bottom: 1px solid #eee; }
+    </style>
+</head>
+<body>
+
+    <div class="card" style="background: #fff3e0;">
+        <h2>👤 あなたの名前</h2>
+        <input type="text" id="userName" placeholder="部員名" onchange="saveUserName()">
+    </div>
+
+    <div class="card">
+        <input type="month" id="viewMonth" onchange="refreshUI()">
+    </div>
+
+    <div class="card">
+        <div id="goalInputs" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-bottom: 5px;"></div>
+        <button class="btn" style="background:#34a853; color:white; width:100%; padding:8px;" onclick="saveGoals()">目標保存</button>
+    </div>
+
+    <div class="card">
+        <h2>📝 記録入力</h2>
+        <div class="input-row">
+            <input type="date" id="inputDate">
+            <select id="inputAMPM"><option value="AM">午前</option><option value="PM" selected>午後</option></select>
+        </div>
+        <div class="input-row">
+            <select id="inputActivity">
+                <option value="ローラーF">ローラーF</option><option value="ローラーDP">ローラーDP</option>
+                <option value="ラン">ラン</option><option value="ポールラン">ポールラン</option>
+                <option value="筋トレ">筋トレ</option><option value="その他">その他</option>
+            </select>
+            <input type="number" id="inputDuration" placeholder="分" inputmode="numeric">
+        </div>
+        <button class="btn btn-add" onclick="addRecord()">保存</button>
+    </div>
+
+    <div class="card">
+        <h2>📊 月間集計 (自分)</h2>
+        <div class="table-wrapper">
+            <table><thead><tr id="tHead"></tr></thead><tbody id="tBody"></tbody></table>
+        </div>
+        <button class="btn btn-share" onclick="sendToGAS()">📤 全員に共有</button>
+    </div>
+
+    <div class="card">
+        <h2>🌍 部員全員の合計</h2>
+        <button class="btn btn-view" onclick="fetchFromGAS()">🔄 更新</button>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">名前</th>
+                        <th>RF</th><th>RD</th><th>ラン</th><th>PL</th><th>筋トレ</th><th>他</th>
+                        <th>総計</th>
+                    </tr>
+                </thead>
+                <tbody id="shareBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>🛠 履歴</h2>
+        <div id="historyList" class="history-list"></div>
+    </div>
+
+<script>
+    // 【重要】URLを貼り直してください
+    const GAS_URL = "https://script.google.com/macros/s/AKfycby_S0seHjaUUm80foc_9h_box0DLLK_DMRQ2gPE_CoEviNElWm3CZ9PeXMh-NxOID3B9A/exec";
+
+    const COLUMNS = ["ローラーF", "ローラーDP", "ラン", "ポールラン", "筋トレ", "その他"];
+    let currentMonthlyTotals = {};
+    let currentGrandTotal = 0;
+
+    window.onload = function() {
+        const now = new Date();
+        const monthStr = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, '0');
+        document.getElementById('viewMonth').value = monthStr;
+        document.getElementById('inputDate').valueAsDate = now;
+        document.getElementById('userName').value = localStorage.getItem('club_userName') || "";
+        initGoalInputs();
+        loadGoals();
+        refreshUI();
+    };
+
+    function saveUserName() { localStorage.setItem('club_userName', document.getElementById('userName').value); }
+    function initGoalInputs() {
+        document.getElementById('goalInputs').innerHTML = COLUMNS.map(col => `
+            <div style="font-size:10px;"><label>${col.slice(0,2)}</label>
+            <input type="number" id="goalVal_${col}" style="padding:5px; font-size:12px;"></div>
+        `).join('');
+    }
+    function saveGoals() {
+        const goals = {};
+        COLUMNS.forEach(col => goals[col] = parseInt(document.getElementById(`goalVal_${col}`).value) || 0);
+        localStorage.setItem('club_goals_v3', JSON.stringify(goals));
+        alert("保存！"); refreshUI();
+    }
+    function loadGoals() {
+        const goals = JSON.parse(localStorage.getItem('club_goals_v3')) || {};
+        COLUMNS.forEach(col => { if (goals[col]) document.getElementById(`goalVal_${col}`).value = goals[col]; });
+    }
+
+    function addRecord() {
+        const duration = parseInt(document.getElementById('inputDuration').value) || 0;
+        if (duration <= 0) return alert("数値を入力");
+        const records = JSON.parse(localStorage.getItem('club_v3')) || [];
+        records.push({ date: document.getElementById('inputDate').value, ampm: document.getElementById('inputAMPM').value, activity: document.getElementById('inputActivity').value, duration });
+        localStorage.setItem('club_v3', JSON.stringify(records));
+        document.getElementById('inputDuration').value = "";
+        refreshUI();
+    }
+
+    function refreshUI() {
+        const records = JSON.parse(localStorage.getItem('club_v3')) || [];
+        const viewMonth = document.getElementById('viewMonth').value;
+        displayTable(records, viewMonth);
+        displayHistory(records);
+    }
+
+    function displayTable(records, viewMonth) {
+        const tHead = document.getElementById('tHead');
+        const tBody = document.getElementById('tBody');
+        tHead.innerHTML = `<th class="date-cell">日</th><th style="width:25px;">枠</th>` + COLUMNS.map(c => `<th>${c.slice(0,1)}</th>`).join('');
+
+        const [year, month] = viewMonth.split('-').map(Number);
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const dataMap = {};
+        records.forEach(r => {
+            const key = `${r.date}_${r.ampm}`;
+            if (!dataMap[key]) dataMap[key] = {};
+            dataMap[key][r.activity] = (dataMap[key][r.activity] || 0) + r.duration;
+        });
+
+        tBody.innerHTML = "";
+        const colTotals = {};
+        COLUMNS.forEach(c => colTotals[c] = 0);
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            ["AM", "PM"].forEach(slot => {
+                const key = `${dateStr}_${slot}`;
+                let rowHtml = `<tr style="background:${slot==='AM'?'#fff':'#f9f9f9'}"><td class="date-cell">${slot==='AM'?d:''}</td><td>${slot}</td>`;
+                COLUMNS.forEach(col => {
+                    const val = (dataMap[key] && dataMap[key][col]) || 0;
+                    rowHtml += `<td>${val > 0 ? val : '-'}</td>`;
+                    colTotals[col] += val;
+                });
+                tBody.innerHTML += rowHtml + `</tr>`;
+            });
+        }
+        currentMonthlyTotals = colTotals;
+        currentGrandTotal = Object.values(colTotals).reduce((a, b) => a + b, 0);
+        tBody.innerHTML += `<tr class="total-row"><td colspan="2">計</td>` + COLUMNS.map(c => `<td>${colTotals[c]}</td>`).join('') + `</tr>`;
+    }
+
+    async function sendToGAS() {
+        const name = document.getElementById('userName').value;
+        if (!name) return alert("名前！");
+        try {
+            await fetch(GAS_URL, { method: "POST", body: JSON.stringify({ name, month: document.getElementById('viewMonth').value, totals: currentMonthlyTotals, grandTotal: currentGrandTotal }) });
+            alert("共有OK");
+        } catch (e) { alert("失敗"); }
+    }
+
+    async function fetchFromGAS() {
+        const body = document.getElementById('shareBody');
+        body.innerHTML = "ロード中...";
+        try {
+            const response = await fetch(GAS_URL);
+            const data = await response.json();
+            body.innerHTML = "";
+            data.forEach(row => {
+                body.innerHTML += `<tr><td>${row[0]}</td><td>${row[2]}</td><td>${row[3]}</td><td>${row[4]}</td><td>${row[5]}</td><td>${row[6]}</td><td>${row[7]}</td><td>${row[8]}</td></tr>`;
+            });
+        } catch (e) { alert("エラー"); }
+    }
+
+    function displayHistory(records) {
+        document.getElementById('historyList').innerHTML = records.slice().reverse().map((r, i) => `
+            <div class="history-item"><span>${r.date.slice(5)} ${r.ampm} ${r.activity}:${r.duration}</span>
+            <button onclick="deleteRecord(${records.length-1-i})" style="color:red; background:none; border:none;">消</button></div>
+        `).join('');
+    }
+
+    function deleteRecord(idx) {
+        if(!confirm("消す？")) return;
+        const records = JSON.parse(localStorage.getItem('club_v3')) || [];
+        records.splice(idx, 1);
+        localStorage.setItem('club_v3', JSON.stringify(records));
+        refreshUI();
+    }
+</script>
+
+</body>
+</html>
